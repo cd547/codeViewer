@@ -1,0 +1,349 @@
+body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+      overflow: hidden;
+    }
+    .container {
+      width: 100%;
+      height: 100vh;
+      margin: 0;
+      background-color: white;
+      padding: 0;
+      border-radius: 0;
+      box-shadow: none;
+      display: flex;
+      flex-direction: row;
+      gap: 0;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    
+    .top-controls {
+      flex-shrink: 0;
+    }
+    .main-content {
+      display: flex;
+      gap: 10px;
+      flex: 1;
+      min-height: 0;
+      margin-bottom: 0;
+      padding-bottom: 0;
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 100%;
+    }
+    .left-panel {
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .file-upload {
+      padding: 5px;
+      border: none;
+      text-align: center;
+      margin-bottom: 0;
+    }
+    #file-input,
+    #folder-input {
+      display: none;
+    }
+    .btn {
+      display: inline-block;
+      padding: 4px 8px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+    }
+    .btn:hover {
+      background-color: #2980b9;
+    }
+    .btn:active {
+      background-color: #1f618d;
+    }
+    .btn-secondary {
+      background-color: #95a5a6;
+    }
+    .btn-secondary:hover {
+      background-color: #7f8c8d;
+    }
+    .btn-secondary:active {
+      background-color: #626567;
+    }
+    .directory-structure {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .directory-header {
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #ddd;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    .tree-view {
+      flex: 1;
+      overflow-y: auto !important;
+      overflow-x: auto !important;
+      padding: 10px;
+      min-height: 0;
+      height: 100%;
+      display: block;
+      white-space: nowrap;
+    }
+    
+    /* 确保滚动条始终可见 */
+    .tree-view::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    
+    .tree-view::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    
+    .tree-view::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 5px;
+    }
+    
+    .tree-view::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    .tree-container {
+      overflow-x: auto;
+      overflow-y: auto !important;
+      height: 100%;
+      white-space: nowrap;
+    }
+    .right-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 0;
+      padding-bottom: 0;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    .function-select-section {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: #f8f9fa;
+      font-size: 12px;
+      flex-wrap: nowrap;
+      max-width: 100%;
+    }
+    .function-select-section .analysis-controls {
+      margin: 0;
+      gap: 6px;
+    }
+    .form-control {
+      flex: 2;
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .analysis-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .content {
+      flex: 1;
+      display: flex;
+      gap: 20px;
+      flex-direction: row;
+      min-height: 0;
+    }
+    .graph-container {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      min-height: 0;
+      position: relative;
+    }
+    .code-container {
+      flex: 1;
+      border: 1px solid #333;
+      border-radius: 4px;
+      min-height: 0;
+      position: relative;
+      background-color: #1e1e1e;
+      display: flex;
+      flex-direction: column;
+    }
+    .code-tabs {
+      flex-shrink: 0;
+      min-height: 36px;
+      display: flex;
+      background-color: #252526;
+      border-bottom: 1px solid #333;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .code-tabs::-webkit-scrollbar {
+      height: 6px;
+    }
+    .code-tabs::-webkit-scrollbar-track {
+      background: #252526;
+    }
+    .code-tabs::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 3px;
+    }
+    .code-tabs::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    .code-tabs {
+      scrollbar-width: thin;
+      scrollbar-color: #424242 #252526;
+    }
+    .code-header {
+      padding: 8px 10px;
+      background-color: #252526;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #d4d4d4;
+      font-size: 12px;
+    }
+    .code-content {
+      padding: 10px;
+      padding-bottom: 50px;
+      overflow: auto !important;
+      flex: 1;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+      position: relative;
+      margin: 0;
+    }
+    /* 暗色主题滚动条 */
+    .code-content::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    .code-content::-webkit-scrollbar-track {
+      background: #252526;
+    }
+    .code-content::-webkit-scrollbar-thumb {
+      background: #424242;
+      border-radius: 4px;
+    }
+    .code-content::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    /* 确保滚动条在所有浏览器中都能显示 */
+    .code-content {
+      scrollbar-width: thin;
+      scrollbar-color: #424242 #252526;
+    }
+    .code-content .keyword {
+      color: #569cd6;
+    }
+    .code-content .string {
+      color: #ce9178;
+    }
+    .code-content .comment {
+      color: #6a9955;
+    }
+    .code-content .number {
+      color: #b5cea8;
+    }
+    .code-content .function {
+      color: #dcdcaa;
+    }
+    .code-content .operator {
+      color: #d4d4d4;
+    }
+    .line-number {
+      color: #999;
+      user-select: none;
+      margin-right: 10px;
+    }
+    .function-definition {
+      background-color: rgba(33, 150, 243, 0.2);
+      border-left: 3px solid #2196f3;
+    }
+    .function-call {
+      background-color: #e8f5e8;
+      border-left: 3px solid #4caf50;
+    }
+    .status {
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #333;
+    }
+    .error {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+    .file-item {
+      cursor: pointer;
+      margin: 0;
+      padding: 1px 0;
+      line-height: 1.1;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .file-item:hover {
+      background-color: #f0f0f0;
+    }
+    .file-item.selected {
+      background-color: #e3f2fd;
+      border-left: 3px solid #2196f3;
+      font-weight: bold;
+    }
+    .dir-item {
+      margin: 0;
+    }
+    .dir-header {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      padding: 0;
+      line-height: 1.1;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .dir-header:hover {
+      background-color: #f0f0f0;
+    }
+    .dir-content {
+      padding-left: 20px;
+    }
+    /* 函数类型图标 */
+    .function-icon {
+      margin-right: 8px;
+      font-size: 14px;
+    }
+    .function-declaration {
+      color: #3498db;
+    }
+    .function-expression {
+      color: #2ecc71;
+    }
+    .arrow-function {
+      color: #e74c3c;
+    }

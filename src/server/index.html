@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>代码调用关系图工具</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="vendor/highlight.js/styles/atom-one-dark.min.css">
+  <script src="vendor/highlight.js/highlight.js"></script>
+</head>
+<body>
+  <div style="display: flex; flex-direction: column; height: 100vh; overflow: hidden; position: relative;">
+    <!-- 主要内容区域 -->
+    <div style="flex: 1; display: flex; overflow: hidden; height: calc(100vh - 30px);">
+      <!-- 左侧栏 -->
+      <div id="left-panel" style="width: 50%; display: flex; flex-direction: column; border-right: 1px solid #ddd; height: 100%; min-width: 300px;">
+        <!-- 分隔线 -->
+        <div id="resizer" style="position: absolute; right: 50%; top: 0; width: 4px; height: 100%; cursor: col-resize; z-index: 10; background-color: transparent;" onmousedown="startResize(event)"></div>
+        <!-- 操作栏 -->
+        <div class="top-controls" style="padding: 10px; border-bottom: 1px solid #ddd; background-color: #f8f9fa; display: flex; gap: 10px; align-items: center; width: 100%; box-sizing: border-box; flex-shrink: 0; height: 50px;">
+          <div class="file-upload">
+            <input type="file" id="folder-input" directory webkitdirectory mozdirectory>
+            <label for="folder-input" class="btn">选择项目文件夹</label>
+          </div>
+          <div class="function-select-section" id="entry-function-section" style="display: none; flex: 1; gap: 10px; align-items: center;">
+            <label for="entry-function-select" style="white-space: nowrap;">起始函数：</label>
+            <select id="entry-function-select" class="form-control" style="flex: 1; min-width: 0;">
+              <option value="">请选择起始函数</option>
+            </select>
+            <div class="analysis-controls" style="display: none; gap: 8px;" id="analysis-controls">
+              <button id="analyze-btn" class="btn" disabled>分析代码</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 下部分：项目目录结构和目录视图 -->
+        <div style="flex: 1; display: flex; gap: 10px; padding: 10px; box-sizing: border-box; height: calc(100% - 50px);">
+          <!-- 下左：项目目录结构区域 -->
+          <div class="left-panel" style="display: flex; flex-direction: column; width: 280px; flex-shrink: 0; height: 100%;">
+            <div class="directory-structure" id="directory-structure" style="display: none; flex: 1; flex-direction: column; height: 100%;">
+              <div class="directory-header" style="height: 30px; line-height: 30px; padding: 0 10px;">项目目录结构</div>
+              <div class="tree-view" id="tree-view" style="flex: 1; overflow-y: auto !important; overflow-x: auto !important; padding: 10px; height: calc(100% - 30px);">
+                <!-- 目录结构将在这里显示 -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- 下右：目录视图和图形视图tab -->
+          <div class="right-panel" style="flex: 1; display: flex; flex-direction: column; height: 100%;">
+            <!-- 内容区域：Tab切换和图形/目录视图 -->
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%;">
+              <!-- Tab切换 -->
+              <div class="tab-container" style="display: flex; border-bottom: 1px solid #ddd; flex-shrink: 0; height: 36px;">
+                <button class="tab-btn active" data-tab="tree" style="padding: 8px 16px; border: none; background-color: #f8f9fa; cursor: pointer; border-bottom: 2px solid #3498db; height: 100%; box-sizing: border-box;">目录视图</button>
+                <button class="tab-btn" data-tab="graph" style="padding: 8px 16px; border: none; background-color: #f8f9fa; cursor: not-allowed; opacity: 0.5; height: 100%; box-sizing: border-box;">图形视图 (已禁用)</button>
+              </div>
+              
+              <div class="tab-content" id="tree-tab" style="display: block; flex: 1; min-height: 0;">
+                <div class="tree-container" id="function-tree" style="border: 1px solid #ddd; border-radius: 4px; padding: 10px; height: 100%; overflow-y: auto !important; overflow-x: auto !important; box-sizing: border-box;">
+                  <!-- 函数目录结构将在这里显示 -->
+                </div>
+              </div>
+              
+              <div class="tab-content" id="graph-tab" style="display: none; height: 100%; min-height: 0;">
+                <div class="graph-container" id="graph-container" style="height: 100%; overflow: auto; overflow-x: auto;">
+                  <!-- 调用关系图将在这里显示 -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 右侧栏：代码区域 -->
+      <div id="right-panel" style="flex: 1; display: flex; flex-direction: column; height: 100%; min-width: 300px;">
+        <!-- 代码容器 -->
+        <div class="code-container" style="flex: 1; min-height: 0; display: flex; flex-direction: column; height: 100%;">
+          <!-- Tab容器 -->
+          <div class="code-tabs" id="code-tabs" style="flex-shrink: 0; height: 36px;"></div>
+          <!-- 代码内容容器 -->
+          <div class="code-content-container" style="flex: 1; overflow: hidden;">
+            <div class="code-content" id="code-content" style="height: 100%; overflow: auto;">
+              <!-- 代码将在这里显示 -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 底部栏：消息栏 -->
+    <div class="status" id="status" style="padding: 5px 10px; background-color: #f8f9fa; border-top: 1px solid #ddd; font-size: 12px; flex-shrink: 0; height: 30px; line-height: 20px;">
+      请选择一个 JS 文件进行分析
+    </div>
+  </div>
+
+  <script src="js/script.js"></script>
+</body>
+</html>

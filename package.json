@@ -1,0 +1,27 @@
+{
+  "name": "codeviewer",
+  "version": "1.0.0",
+  "description": "代码调用关系图工具",
+  "main": "src/server/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "powershell -Command \"netstat -ano | findstr :3001 | ForEach-Object { $processId = ($_ -split '\\s+')[-1]; if ($processId -match '\\d+') { taskkill /F /PID $processId 2>$null } }; node src/server/server.js\""
+  },
+  "keywords": [
+    "code",
+    "call graph",
+    "visualization"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@babel/parser": "^7.29.0",
+    "axios": "^1.13.6",
+    "d3": "^7.9.0",
+    "esprima": "^4.0.1",
+    "express": "^4.18.3",
+    "highlight.js": "^11.7.0",
+    "html2canvas": "^1.4.1",
+    "zod": "^4.3.6"
+  }
+}
