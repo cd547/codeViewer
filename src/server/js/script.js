@@ -7,9 +7,54 @@ let files = [];
     let entryFunction = '';
     let tabs = [];
     let currentTabIndex = -1;
+    let allFunctions = []; // 存储所有函数列表，用于搜索
+    let config = { // 存储配置信息
+      functionTypeIcons: {
+        'FunctionDeclaration': 'function-declaration.svg',
+        'FunctionExpression': 'function-expression.svg',
+        'ArrowFunctionExpression': 'arrow-function.svg',
+        'MethodDefinition': 'class-method.svg',
+        'ClassMethod': 'class-method.svg',
+        'default': 'default-function.svg'
+      },
+      excludePaths: [
+        'node_modules',
+        '.git',
+        'dist',
+        'build',
+        'coverage',
+        '*.log',
+        '*.tmp',
+        '*.temp'
+      ]
+    };
+    
+    // 加载配置
+    async function loadConfig() {
+      try {
+        const response = await fetch('/config/frontendConfig.json');
+        if (response.ok) {
+          const newConfig = await response.json();
+          if (newConfig.functionTypeIcons) {
+            config.functionTypeIcons = newConfig.functionTypeIcons;
+          }
+          if (newConfig.excludePaths) {
+            config.excludePaths = newConfig.excludePaths;
+          }
+        }
+      } catch (error) {
+        console.error('加载配置失败:', error);
+      }
+    }
+    
+    // 获取函数类型对应的图标
+    function getFunctionIcon(type) {
+      const iconFile = config.functionTypeIcons[type] || config.functionTypeIcons['default'];
+      return `<img src="imgs/${iconFile}" width="16" height="16" alt="${type}">`;
+    }
 
     // 初始化
-    function init() {
+    async function init() {
       // 初始化可视化器
       visualizer = {
         containerId: 'graph-container',
@@ -21,10 +66,28 @@ let files = [];
         links: []
       };
 
+      // 加载配置
+      await loadConfig();
+
       // 事件监听
       document.getElementById('folder-input').addEventListener('change', handleFolderSelect);
-      document.getElementById('entry-function-select').addEventListener('change', handleEntryFunctionSelect);
       document.getElementById('analyze-btn').addEventListener('click', analyzeCode);
+      
+      // 添加搜索输入框事件监听
+      const searchInput = document.getElementById('entry-function-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', handleSearchInput);
+        searchInput.addEventListener('focus', showDropdown);
+      }
+      
+      // 点击页面其他地方关闭下拉菜单
+      document.addEventListener('click', function(event) {
+        const dropdown = document.getElementById('entry-function-dropdown');
+        const searchInput = document.getElementById('entry-function-input');
+        if (dropdown && searchInput && !dropdown.contains(event.target) && !searchInput.contains(event.target)) {
+          dropdown.style.display = 'none';
+        }
+      });
     }
     
     // 调整大小相关函数
@@ -99,12 +162,15 @@ let files = [];
       const selectedFiles = event.target.files;
       if (selectedFiles.length === 0) return;
 
+      // 立即显示等待遮罩
+      document.getElementById('loading-overlay').style.display = 'flex';
+
       console.log('选择的文件数量:', selectedFiles.length);
       files = Array.from(selectedFiles);
       codeContents = {};
       let loadedCount = 0;
 
-      // 读取所有文件
+      // 读取所有文件（仍然需要读取文件内容用于前端显示）
       files.forEach(file => {
         console.log('文件:', file.name, 'webkitRelativePath:', file.webkitRelativePath);
         const reader = new FileReader();
@@ -137,7 +203,10 @@ let files = [];
             document.querySelector('.code-container').style.display = 'none';
             
             // 保存文件到后端临时目录
-            saveFilesToServer();
+            saveFilesToServer().finally(() => {
+              // 隐藏等待遮罩
+              document.getElementById('loading-overlay').style.display = 'none';
+            });
           }
         };
         reader.readAsText(file);
@@ -322,6 +391,18 @@ let files = [];
       document.getElementById('entry-function-section').style.display = 'flex';
       document.getElementById('analysis-controls').style.display = 'flex';
       
+      // 为搜索输入框添加事件监听器
+      const searchInput = document.getElementById('entry-function-input');
+      if (searchInput) {
+        // 移除旧的事件监听器，避免重复添加
+        searchInput.removeEventListener('input', handleSearchInput);
+        searchInput.removeEventListener('focus', showDropdown);
+        
+        // 添加新的事件监听器
+        searchInput.addEventListener('input', handleSearchInput);
+        searchInput.addEventListener('focus', showDropdown);
+      }
+      
       // 分析入口文件，提取函数列表
       analyzeEntryFile(filePath);
     }
@@ -353,12 +434,15 @@ let files = [];
             populateEntryFunctionSelect(data.functions);
             console.log('找到函数:', data.functions.length);
             console.log('函数列表:', data.functions);
+            
+            // 自动将焦点设置到搜索输入框，显示所有函数
+            const searchInput = document.getElementById('entry-function-input');
+            if (searchInput) {
+              searchInput.focus();
+            }
           } else {
             document.getElementById('status').textContent = `警告: 未在文件中找到函数`;
             document.getElementById('status').classList.add('error');
-            // 清空下拉框
-            const select = document.getElementById('entry-function-select');
-            select.innerHTML = '<option value="">未找到函数</option>';
             console.log('未在文件中找到函数');
           }
         }
@@ -372,46 +456,109 @@ let files = [];
 
     // 填充起始函数选择
     function populateEntryFunctionSelect(fileFunctions) {
-      const select = document.getElementById('entry-function-select');
-      select.innerHTML = '<option value="">请选择起始函数</option>';
+      // 存储所有函数到数组中，用于搜索
+      allFunctions = fileFunctions;
       
       console.log('填充起始函数选择，函数数量:', fileFunctions.length);
       console.log('函数列表:', fileFunctions);
       
-      fileFunctions.forEach(func => {
-        const option = document.createElement('option');
-        option.value = func.name;
-        
-        // 根据函数类型添加图标
-        let icon = '';
-        if (func.type === 'FunctionDeclaration') {
-          icon = '📝';
-        } else if (func.type === 'FunctionExpression') {
-          icon = '🔧';
-        } else if (func.type === 'ArrowFunctionExpression') {
-          icon = '➡️';
-        } else if (func.type === 'MethodDefinition' || func.type === 'ClassMethod') {
-          icon = '🏠';
-        } else {
-          icon = '📄';
-        }
-        
-        option.textContent = `${icon} ${func.name} - 行 ${func.start.line}`;
-        select.appendChild(option);
-        console.log('添加函数选项:', func.name);
-      });
+      // 清空搜索输入框
+      const searchInput = document.getElementById('entry-function-input');
+      if (searchInput) {
+        searchInput.value = '';
+        // 主动显示下拉菜单，显示所有函数
+        filterFunctions('');
+      }
       
       // 启用分析按钮
       document.getElementById('analyze-btn').disabled = false;
     }
 
-    // 处理起始函数选择
-    function handleEntryFunctionSelect(event) {
-      entryFunction = event.target.value;
-      if (entryFunction) {
-        document.getElementById('analyze-btn').disabled = false;
+    // 处理搜索输入
+    function handleSearchInput(event) {
+      const searchTerm = event.target.value.toLowerCase();
+      filterFunctions(searchTerm);
+    }
+    
+    // 过滤函数并显示下拉菜单
+    function filterFunctions(searchTerm) {
+      const dropdown = document.getElementById('entry-function-dropdown');
+      if (!dropdown) return;
+      
+      // 过滤函数
+      const filteredFunctions = allFunctions.filter(func => 
+        func.name.toLowerCase().includes(searchTerm)
+      );
+      
+      // 清空下拉菜单
+      dropdown.innerHTML = '';
+      
+      // 添加过滤后的函数到下拉菜单
+      if (filteredFunctions.length > 0) {
+        filteredFunctions.forEach(func => {
+          const option = document.createElement('div');
+          option.className = 'dropdown-option';
+          option.style.padding = '8px 12px';
+          option.style.cursor = 'pointer';
+          option.style.borderBottom = '1px solid #f0f0f0';
+          option.style.whiteSpace = 'nowrap';
+          option.style.overflow = 'hidden';
+          option.style.textOverflow = 'ellipsis';
+          
+          // 根据函数类型添加图标
+          const icon = getFunctionIcon(func.type);
+          
+          option.innerHTML = `${icon} ${func.name} - 行 ${func.start.line}`;
+          option.dataset.functionName = func.name;
+          
+          // 添加点击事件
+          option.addEventListener('click', function() {
+            selectFunction(func);
+          });
+          
+          // 添加悬停效果
+          option.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#f0f0f0';
+          });
+          
+          option.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = 'transparent';
+          });
+          
+          dropdown.appendChild(option);
+        });
+        
+        dropdown.style.display = 'block';
       } else {
-        document.getElementById('analyze-btn').disabled = true;
+        dropdown.style.display = 'none';
+      }
+    }
+    
+    // 显示下拉菜单
+    function showDropdown() {
+      const searchInput = document.getElementById('entry-function-input');
+      if (searchInput) {
+        // 当输入框获得焦点时，显示所有函数
+        filterFunctions('');
+      }
+    }
+    
+    // 选择函数
+    function selectFunction(func) {
+      const searchInput = document.getElementById('entry-function-input');
+      const dropdown = document.getElementById('entry-function-dropdown');
+      
+      if (searchInput && dropdown) {
+        // 根据函数类型添加图标
+        const icon = getFunctionIcon(func.type);
+        
+        // 只在输入框中显示文本，不显示SVG图标
+        searchInput.value = `${func.name} - 行 ${func.start.line}`;
+        entryFunction = func.name;
+        dropdown.style.display = 'none';
+        
+        // 启用分析按钮
+        document.getElementById('analyze-btn').disabled = false;
       }
     }
 
@@ -1374,24 +1521,60 @@ let files = [];
 
     // 保存文件到服务器临时目录
     function saveFilesToServer() {
-      // 准备文件数据，只包含实际的 JS 文件
-      const jsFiles = {};
+      // 准备FormData，用于直接上传文件
+      const formData = new FormData();
+      
+      // 从配置中获取需要排除的文件和文件夹路径
+      const excludePaths = config.excludePaths || [
+        'node_modules',
+        '.git',
+        'dist',
+        'build',
+        'coverage',
+        '*.log',
+        '*.tmp',
+        '*.temp'
+      ];
+      
+      // 检查文件是否应该被排除
+      function shouldExclude(filePath) {
+        return excludePaths.some(excludePath => {
+          // 检查是否是文件夹路径
+          if (excludePath.endsWith('/')) {
+            return filePath.startsWith(excludePath);
+          }
+          // 检查是否是文件路径模式
+          if (excludePath.includes('*')) {
+            const regex = new RegExp(excludePath.replace(/\*/g, '.*'));
+            return regex.test(filePath);
+          }
+          // 检查是否是完整的文件夹路径
+          return filePath.includes('/' + excludePath + '/') || filePath === excludePath;
+        });
+      }
+      
+      let includedFiles = 0;
       files.forEach(file => {
+        // 检查文件是否是 JS 或 JSON 文件
         if (file.name.endsWith('.js') || file.name.endsWith('.json')) {
           // 使用完整的文件路径作为键
           const filePath = file.webkitRelativePath || file.name;
-          jsFiles[filePath] = codeContents[filePath];
+          
+          // 检查文件是否应该被排除
+          if (!shouldExclude(filePath)) {
+            // 将文件和路径一起添加到FormData
+            formData.append('files', file, filePath);
+            includedFiles++;
+          }
         }
       });
       
-      console.log('准备保存文件到服务器:', Object.keys(jsFiles));
+      console.log('准备保存文件到服务器:', includedFiles, '个文件');
       
-      fetch('/api/save-files', {
+      return fetch('/api/save-files', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ files: jsFiles })
+        // 不设置Content-Type，让浏览器自动设置为multipart/form-data
+        body: formData
       })
       .then(response => response.json())
       .then(data => {

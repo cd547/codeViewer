@@ -38,7 +38,18 @@ const importTypes = {
 // 文件路径配置
 const pathConfig = {
   // 临时目录相对路径
-  tmpDir: '../../tmp'
+  tmpDir: '../../tmp',
+  // 需要排除的文件和文件夹路径
+  excludePaths: [
+    'node_modules',
+    '.git',
+    'dist',
+    'build',
+    'coverage',
+    '*.log',
+    '*.tmp',
+    '*.temp',
+  ]
 };
 
 // 服务器配置

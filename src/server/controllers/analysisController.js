@@ -2,6 +2,7 @@ const CodeParser = require('../lib/parser/codeParser');
 const path = require('path');
 const fs = require('fs');
 const { analysisConfig, functionTypes, importTypes, pathConfig } = require('../config');
+const iconConfig = require('../config/frontendConfig.json');
 
 // 基于入口函数构建调用关系图
 function buildCallGraphFromEntry(allFunctions, calls, imports, entryFile, entryFunction) {
@@ -741,13 +742,8 @@ const analyze = (req, res) => {
 };
 
 // 保存文件到临时目录
-const saveFiles = (req, res) => {
+const saveFiles = async (req, res) => {
   try {
-    const { files } = req.body;
-    if (!files || typeof files !== 'object') {
-      return res.status(400).json({ error: '缺少文件数据' });
-    }
-
     // 清空临时目录
     const tmpDir = path.join(__dirname, pathConfig.tmpDir);
     if (fs.existsSync(tmpDir)) {
@@ -755,19 +751,108 @@ const saveFiles = (req, res) => {
     }
     fs.mkdirSync(tmpDir, { recursive: true });
 
-    // 保存所有文件
-    Object.entries(files).forEach(([filePath, content]) => {
-      const fullPath = path.join(tmpDir, filePath);
-      // 创建目录结构
-      const dir = path.dirname(fullPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      // 写入文件
-      fs.writeFileSync(fullPath, content);
-    });
+    // 检查文件是否应该被排除
+    function shouldExclude(filePath) {
+      return (iconConfig.excludePaths || []).some(excludePath => {
+        // 检查是否是文件夹路径
+        if (excludePath.endsWith('/')) {
+          return filePath.startsWith(excludePath);
+        }
+        // 检查是否是文件路径模式
+        if (excludePath.includes('*')) {
+          const regex = new RegExp(excludePath.replace(/\*/g, '.*'));
+          return regex.test(filePath);
+        }
+        // 检查是否是完整的文件夹路径
+        return filePath.includes('/' + excludePath + '/') || filePath === excludePath;
+      });
+    }
 
-    res.json({ success: true, message: '文件保存成功' });
+    // 检查请求类型
+    if (req.headers['content-type'] && req.headers['content-type'].startsWith('multipart/form-data')) {
+      // 处理文件上传（使用内置方法）
+      const boundary = req.headers['content-type'].split('; ')[1].split('=')[1];
+      const chunks = [];
+
+      // 收集所有数据块
+      for await (const chunk of req) {
+        chunks.push(chunk);
+      }
+
+      const buffer = Buffer.concat(chunks);
+      const parts = buffer.toString().split(`--${boundary}`);
+
+      const savePromises = [];
+
+      // 处理每个文件部分
+      parts.forEach(part => {
+        const lines = part.split('\r\n');
+        if (lines.length < 3) return;
+
+        const header = lines[1];
+        if (!header.includes('Content-Disposition')) return;
+
+        // 提取文件名和路径
+        const filenameMatch = header.match(/filename="([^"]+)"/);
+        if (!filenameMatch) return;
+
+        const filePath = filenameMatch[1];
+        if (shouldExclude(filePath)) return;
+
+        // 提取文件内容
+        const contentStart = lines.indexOf('') + 1;
+        const contentEnd = lines.lastIndexOf('');
+        if (contentStart >= contentEnd) return;
+
+        // 提取内容，处理二进制数据
+        const contentLines = lines.slice(contentStart, contentEnd);
+        const content = contentLines.join('\r\n');
+        const fullPath = path.join(tmpDir, filePath);
+
+        // 创建目录结构
+        const dir = path.dirname(fullPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+
+        // 写入文件
+        savePromises.push(new Promise((resolve, reject) => {
+          fs.writeFile(fullPath, content, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        }));
+      });
+
+      await Promise.all(savePromises);
+      res.json({ success: true, message: '文件保存成功' });
+    } else {
+      // 保持向后兼容，处理JSON格式
+      const { files } = req.body;
+      if (!files || typeof files !== 'object') {
+        return res.status(400).json({ error: '缺少文件数据' });
+      }
+
+      // 保存所有文件（使用Promise.all并行处理）
+      const savePromises = Object.entries(files).map(async ([filePath, content]) => {
+        // 检查文件是否应该被排除
+        if (!shouldExclude(filePath)) {
+          const fullPath = path.join(tmpDir, filePath);
+          // 创建目录结构
+          const dir = path.dirname(fullPath);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          // 写入文件
+          fs.writeFileSync(fullPath, content);
+        }
+      });
+
+      // 等待所有文件保存完成
+      await Promise.all(savePromises);
+
+      res.json({ success: true, message: '文件保存成功' });
+    }
   } catch (error) {
     console.error('保存文件出错:', error);
     res.status(500).json({ error: error.message });

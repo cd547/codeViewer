@@ -1,0 +1,21 @@
+{
+  "functionTypeIcons": {
+    "FunctionDeclaration": "function-declaration.svg",
+    "FunctionExpression": "function-expression.svg",
+    "ArrowFunctionExpression": "arrow-function.svg",
+    "MethodDefinition": "class-method.svg",
+    "ClassMethod": "class-method.svg",
+    "default": "default-function.svg"
+  },
+  "excludePaths": [
+    "node_modules",
+    ".git",
+    ".vscode",
+    "dist",
+    "build",
+    "coverage",
+    "*.log",
+    "*.tmp",
+    "*.temp"
+  ]
+}
