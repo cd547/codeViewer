@@ -15,6 +15,8 @@ let files = [];
         'ArrowFunctionExpression': 'arrow-function.svg',
         'MethodDefinition': 'class-method.svg',
         'ClassMethod': 'class-method.svg',
+        'ObjectMethod': 'function-expression.svg',
+        'ExternalFunction': 'default-function.svg',
         'default': 'default-function.svg'
       },
       excludePaths: [
@@ -50,7 +52,7 @@ let files = [];
     // 获取函数类型对应的图标
     function getFunctionIcon(type) {
       const iconFile = config.functionTypeIcons[type] || config.functionTypeIcons['default'];
-      return `<img src="imgs/${iconFile}" width="16" height="16" alt="${type}">`;
+      return `<img src="imgs/${iconFile}" width="16" height="16" alt="${type}" style="vertical-align: middle; margin-right: 4px;">`;
     }
 
     // 初始化
@@ -94,12 +96,16 @@ let files = [];
     let isResizing = false;
     
     function startResize(e) {
+      e.preventDefault();
+      e.stopPropagation();
       isResizing = true;
       document.addEventListener('mousemove', resize);
       document.addEventListener('mouseup', stopResize);
     }
     
     function resize(e) {
+      e.preventDefault();
+      e.stopPropagation();
       if (!isResizing) return;
       
       const container = document.querySelector('body > div');
@@ -222,6 +228,36 @@ let files = [];
       // 按文件路径组织文件
       const directoryMap = {};
       
+      // 从配置中获取需要排除的文件和文件夹路径
+      const excludePaths = config.excludePaths || [
+        'node_modules',
+        '.git',
+        'dist',
+        'build',
+        'coverage',
+        '*.log',
+        '*.tmp',
+        '*.temp',
+        '.vscode'
+      ];
+      
+      // 检查文件是否应该被排除
+      function shouldExclude(filePath) {
+        return excludePaths.some(excludePath => {
+          // 检查是否是文件夹路径
+          if (excludePath.endsWith('/')) {
+            return filePath.startsWith(excludePath);
+          }
+          // 检查是否是文件路径模式
+          if (excludePath.includes('*')) {
+            const regex = new RegExp(excludePath.replace(/\*/g, '.*'));
+            return regex.test(filePath);
+          }
+          // 检查是否是完整的文件夹路径
+          return filePath.includes('/' + excludePath + '/') || filePath === excludePath;
+        });
+      }
+      
       console.log('files 数组长度:', files.length);
       files.forEach(file => {
         let parts = [];
@@ -234,6 +270,12 @@ let files = [];
         } else {
           // 如果不支持webkitRelativePath，只使用文件名
           parts = [file.name];
+        }
+        
+        // 检查文件是否应该被排除
+        if (shouldExclude(filePath)) {
+          console.log('排除文件:', filePath);
+          return; // 跳过被排除的文件
         }
         
         console.log('处理文件:', file.name, '路径部分:', parts);
@@ -412,6 +454,19 @@ let files = [];
 
     // 分析入口文件，提取函数列表
     function analyzeEntryFile(filePath) {
+      // 清空之前的函数列表
+      allFunctions = [];
+      // 清空搜索输入框
+      const searchInput = document.getElementById('entry-function-input');
+      if (searchInput) {
+        searchInput.value = '';
+      }
+      // 清空下拉菜单
+      const dropdown = document.getElementById('entry-function-dropdown');
+      if (dropdown) {
+        dropdown.innerHTML = '';
+      }
+      
       // 发送请求分析入口文件
       fetch('/api/analyze-entry', {
         method: 'POST',
@@ -428,15 +483,18 @@ let files = [];
           document.getElementById('status').textContent = `错误: ${data.error}`;
           document.getElementById('status').classList.add('error');
           console.error('分析入口文件出错:', data.error);
+          // 即使出错也要清空函数列表
+          populateEntryFunctionSelect([]);
         } else {
-          if (data.functions && data.functions.length > 0) {
-            // 填充起始函数选择
-            populateEntryFunctionSelect(data.functions);
-            console.log('找到函数:', data.functions.length);
-            console.log('函数列表:', data.functions);
+          // 无论是否找到函数，都填充函数选择
+          const functions = data.functions || [];
+          populateEntryFunctionSelect(functions);
+          
+          if (functions.length > 0) {
+            console.log('找到函数:', functions.length);
+            console.log('函数列表:', functions);
             
             // 自动将焦点设置到搜索输入框，显示所有函数
-            const searchInput = document.getElementById('entry-function-input');
             if (searchInput) {
               searchInput.focus();
             }
@@ -451,6 +509,8 @@ let files = [];
         document.getElementById('status').textContent = `分析失败: ${error.message}`;
         document.getElementById('status').classList.add('error');
         console.error('分析请求失败:', error);
+        // 即使请求失败也要清空函数列表
+        populateEntryFunctionSelect([]);
       });
     }
 
@@ -1425,14 +1485,36 @@ let files = [];
           functionInfo.style.flex = '1';
           functionInfo.style.display = 'inline-flex';
           
-          // 添加类型缩写（颜色淡一些）
-          const typeAbbr = getTypeAbbreviation(node.type);
-          const typeSpan = document.createElement('span');
-          typeSpan.textContent = typeAbbr + ' ';
-          typeSpan.style.color = '#666';
-          typeSpan.style.marginRight = '4px';
-          typeSpan.title = node.type; // 显示完整的类型名称
-          functionInfo.appendChild(typeSpan);
+          // 添加函数类型图标
+          const iconName = config.functionTypeIcons[node.type] || config.functionTypeIcons.default || 'default-function.svg';
+          const iconSpan = document.createElement('span');
+          iconSpan.className = 'function-icon';
+          iconSpan.style.marginRight = '4px';
+          iconSpan.style.width = '16px';
+          iconSpan.style.height = '16px';
+          iconSpan.style.display = 'flex';
+          iconSpan.style.alignItems = 'center';
+          iconSpan.style.justifyContent = 'center';
+          iconSpan.title = node.type; // 显示完整的类型名称
+          
+          // 尝试加载图标，如果失败则显示问号
+          const img = document.createElement('img');
+          img.src = `imgs/${iconName}`;
+          img.alt = node.type;
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.verticalAlign = 'middle';
+          img.onerror = function() {
+            // 图标加载失败，显示问号
+            iconSpan.innerHTML = '?';
+            iconSpan.style.textAlign = 'center';
+            iconSpan.style.lineHeight = '16px';
+            iconSpan.style.backgroundColor = '#f0f0f0';
+            iconSpan.style.borderRadius = '2px';
+          };
+          
+          iconSpan.appendChild(img);
+          functionInfo.appendChild(iconSpan);
           
           // 添加函数名称（正常颜色）
           const nameSpan = document.createElement('span');
@@ -1554,7 +1636,9 @@ let files = [];
       }
       
       let includedFiles = 0;
+      console.log('文件总数:', files.length);
       files.forEach(file => {
+        console.log('检查文件:', file.name, '大小:', file.size, '类型:', file.type, 'webkitRelativePath:', file.webkitRelativePath);
         // 检查文件是否是 JS 或 JSON 文件
         if (file.name.endsWith('.js') || file.name.endsWith('.json')) {
           // 使用完整的文件路径作为键
@@ -1565,19 +1649,34 @@ let files = [];
             // 将文件和路径一起添加到FormData
             formData.append('files', file, filePath);
             includedFiles++;
+            console.log('添加文件到FormData:', filePath);
+          } else {
+            console.log('排除文件:', filePath);
           }
+        } else {
+          console.log('跳过非JS/JSON文件:', file.name);
         }
       });
       
       console.log('准备保存文件到服务器:', includedFiles, '个文件');
+      
+      // 检查FormData中的文件
+      console.log('FormData中的文件数量:', formData.getAll('files').length);
+      formData.getAll('files').forEach((file, index) => {
+        console.log('FormData文件', index + 1, ':', file.name, '大小:', file.size);
+      });
       
       return fetch('/api/save-files', {
         method: 'POST',
         // 不设置Content-Type，让浏览器自动设置为multipart/form-data
         body: formData
       })
-      .then(response => response.json())
+      .then(response => {
+        console.log('响应状态:', response.status, response.statusText);
+        return response.json();
+      })
       .then(data => {
+        console.log('响应数据:', data);
         if (data.success) {
           console.log('文件保存成功');
           document.getElementById('status').textContent = `已加载 ${files.length} 个文件，保存成功`;

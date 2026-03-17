@@ -49,6 +49,7 @@ const pathConfig = {
     '*.log',
     '*.tmp',
     '*.temp',
+    '.vscode'
   ]
 };
 

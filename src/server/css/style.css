@@ -280,6 +280,9 @@ body {
       user-select: none;
       margin-right: 10px;
     }
+    .code {
+      white-space: pre-wrap;
+    }
     .function-definition {
       background-color: rgba(33, 150, 243, 0.2);
       border-left: 3px solid #2196f3;

@@ -9,57 +9,112 @@ class CodeParser {
 
   parse(code) {
     try {
-      const ast = parser.parse(code, { 
-        sourceType: 'script',
-        locations: true,
-        ranges: true,
-        tokens: true,
-        plugins: [
-          'jsx',
-          'typescript',
-          'decorators-legacy',
-          'classProperties',
-          'objectRestSpread',
-          'asyncGenerators',
-          'dynamicImport',
-          'optionalChaining',
-          'nullishCoalescingOperator'
-        ]
-      });
-      this.functions = [];
-      this.calls = [];
-      this.imports = [];
-      this.traverse(ast);
+      // 检查代码是否为空
+      if (!code || code.trim() === '') {
+        console.warn('解析空代码');
+        return {
+          functions: [],
+          calls: [],
+          imports: []
+        };
+      }
       
-      // 过滤掉箭头函数和IIFE，只保留用户定义的函数，并移除module_exports_前缀
-      const userDefinedFunctions = this.functions.filter(func => {
-        return func.type !== 'ArrowFunctionExpression' && func.name !== 'IIFE';
-      }).map(func => {
-        // 移除module_exports_前缀
-        if (func.name.startsWith('module_exports_')) {
-          return {
-            ...func,
-            name: func.name.replace('module_exports_', '')
-          };
-        }
-        return func;
-      });
-      
-      return {
-        functions: userDefinedFunctions,
-        calls: this.calls,
-        imports: this.imports
-      };
-    } catch (error) {
-      console.error('解析代码时出错:', error);
-      // 尝试使用更宽松的解析模式
+      // 尝试使用模块模式解析（支持ES6模块）
       try {
+        const ast = parser.parse(code, { 
+          sourceType: 'module',
+          locations: true,
+          ranges: true,
+          tokens: true,
+          plugins: [
+            'jsx',
+            'typescript',
+            'decorators-legacy',
+            'classProperties',
+            'objectRestSpread',
+            'asyncGenerators',
+            'dynamicImport',
+            'optionalChaining',
+            'nullishCoalescingOperator'
+          ]
+        });
+        this.functions = [];
+        this.calls = [];
+        this.imports = [];
+        this.traverse(ast);
+        
+        // 只移除module_exports_前缀，不再过滤箭头函数和IIFE
+        const userDefinedFunctions = this.functions.map(func => {
+          // 移除module_exports_前缀
+          if (func.name.startsWith('module_exports_')) {
+            return {
+              ...func,
+              name: func.name.replace('module_exports_', '')
+            };
+          }
+          return func;
+        });
+        
+        return {
+          functions: userDefinedFunctions,
+          calls: this.calls,
+          imports: this.imports
+        };
+      } catch (moduleError) {
+        // 模块模式解析失败，尝试脚本模式
+        console.warn('模块模式解析失败，尝试脚本模式:', moduleError.message);
+        
         const ast = parser.parse(code, { 
           sourceType: 'script',
           locations: true,
           ranges: true,
           tokens: true,
-          plugins: ['asyncGenerators'],
+          plugins: [
+            'jsx',
+            'typescript',
+            'decorators-legacy',
+            'classProperties',
+            'objectRestSpread',
+            'asyncGenerators',
+            'dynamicImport',
+            'optionalChaining',
+            'nullishCoalescingOperator'
+          ]
+        });
+        this.functions = [];
+        this.calls = [];
+        this.imports = [];
+        this.traverse(ast);
+        
+        // 只移除module_exports_前缀，不再过滤箭头函数和IIFE
+        const userDefinedFunctions = this.functions.map(func => {
+          // 移除module_exports_前缀
+          if (func.name.startsWith('module_exports_')) {
+            return {
+              ...func,
+              name: func.name.replace('module_exports_', '')
+            };
+          }
+          return func;
+        });
+        
+        return {
+          functions: userDefinedFunctions,
+          calls: this.calls,
+          imports: this.imports
+        };
+      }
+    } catch (error) {
+      console.error('解析代码时出错:', error);
+      // 尝试使用更宽松的解析模式
+      try {
+        console.log('尝试使用宽松模式解析');
+        const ast = parser.parse(code, { 
+          sourceType: 'script',
+          locations: true,
+          ranges: true,
+          tokens: true,
+          plugins: [],
           strictMode: false
         });
         this.functions = [];
@@ -67,10 +122,8 @@ class CodeParser {
         this.imports = [];
         this.traverse(ast);
         
-        // 过滤掉箭头函数和IIFE，只保留用户定义的函数，并移除module_exports_前缀
-        const userDefinedFunctions = this.functions.filter(func => {
-          return func.type !== 'ArrowFunctionExpression' && func.name !== 'IIFE';
-        }).map(func => {
+        // 只移除module_exports_前缀，不再过滤箭头函数和IIFE
+        const userDefinedFunctions = this.functions.map(func => {
           // 移除module_exports_前缀
           if (func.name.startsWith('module_exports_')) {
             return {
@@ -88,14 +141,50 @@ class CodeParser {
         };
       } catch (error2) {
         console.error('使用宽松模式解析代码时出错:', error2);
-        // 返回空结果，避免影响用户体验
-        return {
-          functions: [],
-          calls: [],
-          imports: []
-        };
+        // 尝试提取函数声明的简单方法
+        try {
+          console.log('尝试使用简单方法提取函数');
+          const functions = this.extractFunctionsSimple(code);
+          return {
+            functions: functions,
+            calls: [],
+            imports: []
+          };
+        } catch (error3) {
+          console.error('简单方法提取函数失败:', error3);
+          // 返回空结果，避免影响用户体验
+          return {
+            functions: [],
+            calls: [],
+            imports: []
+          };
+        }
       }
     }
+  }
+  
+  // 简单的函数提取方法，用于处理解析失败的情况
+  extractFunctionsSimple(code) {
+    const functions = [];
+    const lines = code.split('\n');
+    
+    // 正则表达式匹配函数声明
+    const functionRegex = /function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;
+    let match;
+    
+    while ((match = functionRegex.exec(code)) !== null) {
+      const funcName = match[1];
+      const lineNumber = code.substring(0, match.index).split('\n').length;
+      
+      functions.push({
+        name: funcName,
+        type: 'FunctionDeclaration',
+        start: { line: lineNumber, column: 0 },
+        end: { line: lineNumber + 1, column: 0 }
+      });
+    }
+    
+    return functions;
   }
 
   traverse(rootNode) {
@@ -299,15 +388,21 @@ class CodeParser {
             // 类方法: class Foo { bar() {} }
             funcName = parentNode.key.name;
           } else if (parentNode.type === 'CallExpression') {
-            // 立即执行箭头函数: (() => {})()
-            // 尝试从上下文中获取更有意义的名称
-            // 检查是否是赋值给变量的 IIFE
-            if (parentNode.parent && parentNode.parent.type === 'VariableDeclarator') {
-              funcName = parentNode.parent.id.name;
-            } else if (parentNode.parent && parentNode.parent.type === 'AssignmentExpression' && parentNode.parent.left.type === 'Identifier') {
-              funcName = parentNode.parent.left.name;
+            // 检查是否是真正的IIFE（立即执行箭头函数）: (() => {})()
+            // 只有当箭头函数是CallExpression的callee时，才是真正的IIFE
+            if (parentNode.callee === node) {
+              // 尝试从上下文中获取更有意义的名称
+              // 检查是否是赋值给变量的 IIFE
+              if (parentNode.parent && parentNode.parent.type === 'VariableDeclarator') {
+                funcName = parentNode.parent.id.name;
+              } else if (parentNode.parent && parentNode.parent.type === 'AssignmentExpression' && parentNode.parent.left.type === 'Identifier') {
+                funcName = parentNode.parent.left.name;
+              } else {
+                funcName = 'IIFE';
+              }
             } else {
-              funcName = 'IIFE';
+              // 箭头函数作为函数参数，不是IIFE
+              funcName = 'arrow';
             }
           } else if (parentNode.type === 'ConditionalExpression') {
             // 条件表达式: condition ? () => {} : () => {}
@@ -782,9 +877,12 @@ class CodeParser {
             // 处理 module.exports = { foo: function() {} }
             // 标记这个对象表达式为module.exports，避免重复处理
             node.right.isModuleExports = true;
+            console.log('处理module.exports对象字面量，属性数量:', node.right.properties.length);
             node.right.properties.forEach(prop => {
-              if (prop.type === 'Property' && (prop.value.type === 'FunctionExpression' || prop.value.type === 'ArrowFunctionExpression')) {
-                let funcName = prop.key.name;
+              console.log('处理属性:', prop.type, 'key:', prop.key ? (prop.key.name || prop.key.value) : '无', 'value:', prop.value ? prop.value.type : '无');
+              // 处理对象属性（ObjectProperty）
+              if (prop.type === 'ObjectProperty' && prop.value && (prop.value.type === 'FunctionExpression' || prop.value.type === 'ArrowFunctionExpression')) {
+                let funcName = prop.key ? (prop.key.name || prop.key.value) : 'anonymous';
                 const funcInfo = {
                   name: funcName,
                   type: prop.value.type,
@@ -793,6 +891,7 @@ class CodeParser {
                   parent: parentFunction
                 };
                 this.functions.push(funcInfo);
+                console.log('添加函数:', funcName, '类型:', prop.value.type);
                 // 将函数体加入栈
                 if (prop.value.body) {
                   if (prop.value.body.type === 'BlockStatement') {
@@ -802,8 +901,10 @@ class CodeParser {
                     stack.push({ node: prop.value.body, parentFunction: funcInfo, parentNode: prop.value });
                   }
                 }
-              } else if (prop.type === 'ObjectMethod' || prop.type === 'MethodDefinition') {
-                let funcName = prop.key.name;
+              } 
+              // 处理对象方法（ObjectMethod）
+              else if (prop.type === 'ObjectMethod') {
+                let funcName = prop.key ? (prop.key.name || prop.key.value) : 'anonymous';
                 const funcInfo = {
                   name: funcName,
                   type: prop.type,
@@ -812,6 +913,7 @@ class CodeParser {
                   parent: parentFunction
                 };
                 this.functions.push(funcInfo);
+                console.log('添加函数:', funcName, '类型:', prop.type);
                 // 将函数体加入栈
                 if (prop.body) {
                   if (prop.body.type === 'BlockStatement') {
@@ -866,8 +968,9 @@ class CodeParser {
         // 如果是 module.exports 的对象字面量，已经在上面处理过了，跳过
         if (!isModuleExports) {
           node.properties.forEach(prop => {
-            if (prop.type === 'Property' && (prop.value.type === 'FunctionExpression' || prop.value.type === 'ArrowFunctionExpression')) {
-              let funcName = prop.key.name;
+            // 处理对象属性（ObjectProperty）
+            if (prop.type === 'ObjectProperty' && prop.value && (prop.value.type === 'FunctionExpression' || prop.value.type === 'ArrowFunctionExpression')) {
+              let funcName = prop.key ? (prop.key.name || prop.key.value) : 'anonymous';
               const funcInfo = {
                 name: funcName,
                 type: prop.value.type,
@@ -885,8 +988,10 @@ class CodeParser {
                   stack.push({ node: prop.value.body, parentFunction: funcInfo, parentNode: prop.value });
                 }
               }
-            } else if (prop.type === 'ObjectMethod' || prop.type === 'MethodDefinition') {
-              let funcName = prop.key.name;
+            } 
+            // 处理对象方法（ObjectMethod）
+            else if (prop.type === 'ObjectMethod') {
+              let funcName = prop.key ? (prop.key.name || prop.key.value) : 'anonymous';
               const funcInfo = {
                 name: funcName,
                 type: prop.type,
@@ -910,6 +1015,15 @@ class CodeParser {
       }
       // 处理类声明和类表达式
       if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') {
+        // 获取类名
+        let className = '';
+        if (node.id) {
+          className = node.id.name;
+        } else if (parentNode && parentNode.type === 'VariableDeclarator') {
+          // 处理类表达式：const MyClass = class { ... }
+          className = parentNode.id.name;
+        }
+        
         // 遍历类的成员
         if (node.body && node.body.body) {
           node.body.body.forEach(member => {
@@ -936,8 +1050,11 @@ class CodeParser {
               }
               
               if (funcName && funcLoc) {
+                // 如果有类名，将类名添加到函数名中，避免函数名冲突
+                const fullFuncName = className ? `${className}.${funcName}` : funcName;
+                
                 const funcInfo = {
-                  name: funcName,
+                  name: fullFuncName,
                   type: funcType,
                   start: funcLoc.start,
                   end: funcLoc.end,

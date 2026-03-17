@@ -495,7 +495,12 @@ const analyzeEntry = (req, res) => {
       return res.status(404).json({ error: '未找到指定的入口文件' });
     }
 
-    const targetCode = fs.readFileSync(fullPath, 'utf8');
+    let targetCode = fs.readFileSync(fullPath, 'utf8');
+    // 移除 multipart/form-data 头部信息
+    const headerEndIndex = targetCode.indexOf('\n\n');
+    if (headerEndIndex !== -1) {
+      targetCode = targetCode.substring(headerEndIndex + 2);
+    }
 
     const parser = new CodeParser();
     const result = parser.parse(targetCode);
@@ -770,62 +775,77 @@ const saveFiles = async (req, res) => {
 
     // 检查请求类型
     if (req.headers['content-type'] && req.headers['content-type'].startsWith('multipart/form-data')) {
-      // 处理文件上传（使用内置方法）
-      const boundary = req.headers['content-type'].split('; ')[1].split('=')[1];
-      const chunks = [];
-
-      // 收集所有数据块
-      for await (const chunk of req) {
-        chunks.push(chunk);
-      }
-
-      const buffer = Buffer.concat(chunks);
-      const parts = buffer.toString().split(`--${boundary}`);
-
-      const savePromises = [];
-
-      // 处理每个文件部分
-      parts.forEach(part => {
-        const lines = part.split('\r\n');
-        if (lines.length < 3) return;
-
-        const header = lines[1];
-        if (!header.includes('Content-Disposition')) return;
-
-        // 提取文件名和路径
-        const filenameMatch = header.match(/filename="([^"]+)"/);
-        if (!filenameMatch) return;
-
-        const filePath = filenameMatch[1];
-        if (shouldExclude(filePath)) return;
-
-        // 提取文件内容
-        const contentStart = lines.indexOf('') + 1;
-        const contentEnd = lines.lastIndexOf('');
-        if (contentStart >= contentEnd) return;
-
-        // 提取内容，处理二进制数据
-        const contentLines = lines.slice(contentStart, contentEnd);
-        const content = contentLines.join('\r\n');
-        const fullPath = path.join(tmpDir, filePath);
-
-        // 创建目录结构
-        const dir = path.dirname(fullPath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
+      // 处理文件上传（使用formidable库）
+      const formidable = require('formidable');
+      const form = new formidable.IncomingForm({
+        allowEmptyFiles: true,
+        minFileSize: 0,
+        multiples: true,
+        keepExtensions: true
+      });
+      
+      form.parse(req, async (err, fields, files) => {
+        if (err) {
+          console.error('解析文件上传出错:', err);
+          return res.status(500).json({ error: err.message });
         }
 
-        // 写入文件
-        savePromises.push(new Promise((resolve, reject) => {
-          fs.writeFile(fullPath, content, (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        }));
-      });
+        console.log('Formidable解析结果:', { fields, files });
 
-      await Promise.all(savePromises);
-      res.json({ success: true, message: '文件保存成功' });
+        const savePromises = [];
+        
+        // 处理多个文件
+        if (files.files) {
+          const fileArray = Array.isArray(files.files) ? files.files : [files.files];
+          console.log('文件数量:', fileArray.length);
+          
+          fileArray.forEach((file, index) => {
+            console.log('处理文件', index + 1, ':', file);
+            
+            // 检查文件对象的结构
+            if (file && file.originalFilename && file.size > 0 && file.filepath) {
+              // 提取文件路径（FormData中第三个参数）
+              const filePath = file.originalFilename;
+              console.log('文件路径:', filePath);
+              if (shouldExclude(filePath)) {
+                console.log('排除文件:', filePath);
+                return;
+              }
+              
+              const fullPath = path.join(tmpDir, filePath);
+              const dir = path.dirname(fullPath);
+              console.log('完整路径:', fullPath);
+              console.log('目录:', dir);
+              
+              if (!fs.existsSync(dir)) {
+                console.log('创建目录:', dir);
+                fs.mkdirSync(dir, { recursive: true });
+              }
+              
+              // 直接复制文件，不处理头部信息
+              savePromises.push(new Promise((resolve, reject) => {
+                console.log('复制文件:', file.filepath, '到:', fullPath);
+                fs.copyFile(file.filepath, fullPath, (err) => {
+                  if (err) {
+                    console.error('复制文件出错:', err);
+                    reject(err);
+                  } else {
+                    console.log('复制文件成功:', fullPath);
+                    resolve();
+                  }
+                });
+              }));
+            } else {
+              console.log('跳过空文件或无效文件:', file);
+            }
+          });
+        } else {
+          console.log('没有文件上传');
+        }
+
+        await Promise.all(savePromises);
+        res.json({ success: true, message: '文件保存成功' });
+      });
     } else {
       // 保持向后兼容，处理JSON格式
       const { files } = req.body;
