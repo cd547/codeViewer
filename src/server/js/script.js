@@ -278,6 +278,12 @@ let files = [];
           return; // 跳过被排除的文件
         }
         
+        // 只处理JS和JSON文件，与后端保持一致
+        if (!file.name.endsWith('.js') && !file.name.endsWith('.json')) {
+          console.log('跳过非JS/JSON文件:', file.name);
+          return;
+        }
+        
         console.log('处理文件:', file.name, '路径部分:', parts);
         
         let current = directoryMap;
@@ -627,14 +633,11 @@ let files = [];
       const fileName = node.file.split('/').pop();
       const tabId = `${node.file}:${node.name}:${node.start.line}`;
       
-      // 检查是否已经存在相同文件的tab（使用完整路径）
+      // 检查是否已经存在相同文件和函数的tab
       const existingTabIndex = tabs.findIndex(tab => {
-        return tab.file === node.file;
+        return tab.file === node.file && tab.functionName === node.name;
       });
       if (existingTabIndex !== -1) {
-        // 更新已存在tab的node信息
-        tabs[existingTabIndex].node = node;
-        tabs[existingTabIndex].functionName = node.name;
         // 切换到已存在的tab
         switchTab(existingTabIndex);
         return;
@@ -1679,7 +1682,8 @@ let files = [];
         console.log('响应数据:', data);
         if (data.success) {
           console.log('文件保存成功');
-          document.getElementById('status').textContent = `已加载 ${files.length} 个文件，保存成功`;
+          // 显示实际保存的文件数量，即includedFiles
+          document.getElementById('status').textContent = `已加载 ${includedFiles} 个文件，保存成功`;
         } else {
           console.error('文件保存失败:', data.error);
           document.getElementById('status').textContent = `文件保存失败: ${data.error}`;

@@ -91,9 +91,14 @@ function buildCallGraphFromEntry(allFunctions, calls, imports, entryFile, entryF
       // 优化：只处理与当前函数相关的调用
       console.log('当前函数:', currentFunc.name, '文件:', currentFunc.file);
       const relevantCalls = calls.filter(call => {
-        const isMatch = call.parent && call.parent.name === currentFunc.name && call.parent.file === currentFunc.file;
+        // 检查调用是否有父函数，并且父函数名称与当前函数名称匹配
+        // 由于call.parent没有file属性，我们使用call.file来匹配当前函数的文件
+        // 确保路径格式一致（使用正斜杠）
+        const normalizedCallFile = call.file ? call.file.replace(/\\/g, '/') : '';
+        const normalizedCurrentFile = currentFunc.file ? currentFunc.file.replace(/\\/g, '/') : '';
+        const isMatch = call.parent && call.parent.name === currentFunc.name && normalizedCallFile === normalizedCurrentFile;
         if (call.name === 'findCourseListQueryDocStudy') {
-          console.log('检查调用:', call.name, '父函数:', call.parent ? call.parent.name : '无', '父文件:', call.parent ? call.parent.file : '无', '匹配:', isMatch);
+          console.log('检查调用:', call.name, '父函数:', call.parent ? call.parent.name : '无', '调用文件:', call.file, '当前文件:', currentFunc.file, '匹配:', isMatch);
         }
         return isMatch;
       });
@@ -185,10 +190,29 @@ function buildCallGraphFromEntry(allFunctions, calls, imports, entryFile, entryF
           
           let importFilePath = null;
           for (const possiblePath of possiblePaths) {
-            // 首先在tmp目录下查找
+            // 尝试1：相对于临时目录
             const tmpPath = path.join(__dirname, pathConfig.tmpDir, possiblePath);
             if (fs.existsSync(tmpPath)) {
-              // 直接使用可能的路径作为导入文件路径
+              importFilePath = possiblePath;
+              break;
+            }
+            
+            // 尝试2：直接使用提供的路径（可能是绝对路径）
+            if (path.isAbsolute(possiblePath) && fs.existsSync(possiblePath)) {
+              importFilePath = possiblePath;
+              break;
+            }
+            
+            // 尝试3：相对于项目根目录
+            const projectPath = path.join(__dirname, '..', '..', '..', possiblePath);
+            if (fs.existsSync(projectPath)) {
+              importFilePath = possiblePath;
+              break;
+            }
+            
+            // 尝试4：相对于当前工作目录
+            const cwdPath = path.join(process.cwd(), possiblePath);
+            if (fs.existsSync(cwdPath)) {
               importFilePath = possiblePath;
               break;
             }
@@ -200,14 +224,15 @@ function buildCallGraphFromEntry(allFunctions, calls, imports, entryFile, entryF
             const importFilePathWithoutExt = importFilePath.replace(/\.js$/, '');
             calleeFunc = allFunctions.find(func => {
               const funcFileWithoutExt = func.file.replace(/\.js$/, '');
-              // 确保路径格式一致（使用正斜杠）
-              const normalizedFuncFile = funcFileWithoutExt.replace(/\\/g, '/');
-              const normalizedImportFile = importFilePathWithoutExt.replace(/\\/g, '/');
+                // 确保路径格式一致（使用正斜杠）
+                const normalizedFuncFile = funcFileWithoutExt.replace(/\\/g, '/');
+                const normalizedImportFile = importFilePathWithoutExt.replace(/\\/g, '/');
               return normalizedFuncFile === normalizedImportFile && (
                 func.name === funcName || 
                 func.name === 'module_exports_' + funcName || 
                 func.name === 'exports_' + funcName ||
-                ((func.type === 'ClassMethod' || func.type === 'MethodDefinition') && func.name === funcName)
+                // 检查是否是类方法，格式为 ClassName.methodName
+                func.name.endsWith('.' + funcName)
               );
             });
           }
@@ -215,93 +240,34 @@ function buildCallGraphFromEntry(allFunctions, calls, imports, entryFile, entryF
         
         // 如果找不到，尝试在所有文件中查找函数名匹配的函数，但优先考虑与导入路径相关的文件
         if (!calleeFunc) {
+          // 首先尝试查找完全匹配的函数名（包括类方法格式）
+          calleeFunc = allFunctions.find(func => func.name === call.name);
+          if (calleeFunc) {
+            console.log('找到完全匹配的函数:', calleeFunc.name, '在文件:', calleeFunc.file);
+          }
+          
           // 尝试在所有文件中查找，但优先选择与导入路径相关的文件
-          // 首先尝试在可能的模块路径中查找
-          if (typeof importFilePath !== 'undefined') {
+          if (!calleeFunc && typeof importFilePath !== 'undefined') {
             const importDir = path.dirname(importFilePath);
             calleeFunc = allFunctions.find(func => {
               const funcDir = path.dirname(func.file);
               const normalizedFuncDir = funcDir.replace(/\\/g, '/');
               const normalizedImportDir = importDir.replace(/\\/g, '/');
-              return func.name === funcName && normalizedFuncDir.includes(normalizedImportDir);
+              return (func.name === funcName || func.name.endsWith('.' + funcName)) && normalizedFuncDir.includes(normalizedImportDir);
+            });
+          }
+          
+          // 尝试查找类方法，如 OrderStudentService.studyCousume
+          if (!calleeFunc) {
+            calleeFunc = allFunctions.find(func => {
+              // 检查函数名是否包含类名和方法名，如 OrderStudentService.studyCousume
+              return func.name.endsWith('.' + funcName);
             });
           }
           
           // 如果仍然找不到，再在所有文件中查找
           if (!calleeFunc) {
             calleeFunc = allFunctions.find(func => func.name === funcName);
-          }
-        }
-        
-        // 特殊处理：查找所有文件中类型为ClassMethod或MethodDefinition且函数名匹配的函数
-        if (!calleeFunc) {
-          // 首先尝试在可能的模块路径中查找，优先选择完整路径匹配
-          if (typeof importFilePath !== 'undefined') {
-            const importDir = path.dirname(importFilePath);
-            // 优先选择路径完全匹配的函数
-            calleeFunc = allFunctions.find(func => {
-              const funcDir = path.dirname(func.file);
-              const normalizedFuncDir = funcDir.replace(/\\/g, '/');
-              const normalizedImportDir = importDir.replace(/\\/g, '/');
-              return func.name === funcName && 
-                     (func.type === 'ClassMethod' || func.type === 'MethodDefinition') &&
-                     normalizedFuncDir === normalizedImportDir;
-            });
-            
-            // 如果找不到，再尝试路径包含的函数
-            if (!calleeFunc) {
-              calleeFunc = allFunctions.find(func => {
-                const funcDir = path.dirname(func.file);
-                const normalizedFuncDir = funcDir.replace(/\\/g, '/');
-                const normalizedImportDir = importDir.replace(/\\/g, '/');
-                return func.name === funcName && 
-                       (func.type === 'ClassMethod' || func.type === 'MethodDefinition') &&
-                       normalizedFuncDir.includes(normalizedImportDir);
-              });
-            }
-          }
-          
-          // 如果仍然找不到，再在所有文件中查找，但优先选择与当前文件路径结构相似的
-          if (!calleeFunc) {
-            // 优先选择与当前文件路径结构相似的函数
-            const currentDir = path.dirname(currentFunc.file);
-            const currentDirParts = currentDir.split('/').filter(part => part);
-            
-            // 按路径相似度排序函数
-            const sortedFunctions = allFunctions
-              .filter(func => 
-                func.name === funcName && 
-                (func.type === 'ClassMethod' || func.type === 'MethodDefinition')
-              )
-              .sort((a, b) => {
-                const aDir = path.dirname(a.file);
-                const bDir = path.dirname(b.file);
-                const aParts = aDir.split('/').filter(part => part);
-                const bParts = bDir.split('/').filter(part => part);
-                
-                // 计算路径相似度（共同路径部分的数量）
-                let aSimilarity = 0;
-                let bSimilarity = 0;
-                
-                for (let i = 0; i < Math.min(aParts.length, currentDirParts.length); i++) {
-                  if (aParts[i] === currentDirParts[i]) {
-                    aSimilarity++;
-                  }
-                }
-                
-                for (let i = 0; i < Math.min(bParts.length, currentDirParts.length); i++) {
-                  if (bParts[i] === currentDirParts[i]) {
-                    bSimilarity++;
-                  }
-                }
-                
-                return bSimilarity - aSimilarity;
-              });
-            
-            if (sortedFunctions.length > 0) {
-              calleeFunc = sortedFunctions[0];
-              console.log('按路径相似度选择函数:', calleeFunc.name, '在文件:', calleeFunc.file);
-            }
           }
         }
       }
@@ -360,6 +326,26 @@ function buildCallGraphFromEntry(allFunctions, calls, imports, entryFile, entryF
         }
       } else {
         console.log('函数未找到或无效:', call.name);
+        // 对于未找到的函数，添加一个外部函数节点
+        const calleeId = call.name;
+        // 检查节点是否已经存在
+        if (!nodeExists(calleeId)) {
+          callGraph.nodes.push({
+            id: calleeId,
+            name: call.name,
+            file: call.file,
+            type: 'ExternalFunction',
+            start: call.start,
+            end: call.end
+          });
+          console.log('添加外部函数节点:', calleeId);
+        }
+        // 添加调用关系
+        callGraph.links.push({
+          source: currentId,
+          target: calleeId
+        });
+        console.log('添加调用关系:', currentId, '->', calleeId);
       }
     });
   }
@@ -537,7 +523,7 @@ const analyze = (req, res) => {
     // 递归分析文件
     function analyzeFile(filePath, depth = 0) {
       // 规范化路径，确保同一个文件只有一个唯一的路径表示
-      const normalizedPath = filePath.replace(/\\/g, '/').replace(/\/+\//g, '/');
+      const normalizedPath = filePath.replace(/\\/g, '/').replace(/\/+/g, '/');
       
       // 避免重复分析
       if (analyzedFiles.has(normalizedPath)) {
@@ -564,17 +550,44 @@ const analyze = (req, res) => {
       
       analyzedFiles.add(normalizedPath);
 
-      // 处理路径：只在tmp目录下查找
+      // 处理路径：尝试多种路径方式
     let fullPath;
     let found = false;
     
     console.log('分析文件:', normalizedPath);
     
-    // 尝试：相对于临时目录
+    // 尝试1：相对于临时目录
     fullPath = path.join(__dirname, pathConfig.tmpDir, normalizedPath);
-    console.log('尝试路径:', fullPath, '存在:', fs.existsSync(fullPath));
+    console.log('尝试路径1:', fullPath, '存在:', fs.existsSync(fullPath));
     if (fs.existsSync(fullPath)) {
       found = true;
+    }
+    
+    // 尝试2：直接使用提供的路径（可能是绝对路径）
+    if (!found && path.isAbsolute(normalizedPath)) {
+      fullPath = normalizedPath;
+      console.log('尝试路径2:', fullPath, '存在:', fs.existsSync(fullPath));
+      if (fs.existsSync(fullPath)) {
+        found = true;
+      }
+    }
+    
+    // 尝试3：相对于项目根目录
+    if (!found) {
+      fullPath = path.join(__dirname, '..', '..', '..', normalizedPath);
+      console.log('尝试路径3:', fullPath, '存在:', fs.existsSync(fullPath));
+      if (fs.existsSync(fullPath)) {
+        found = true;
+      }
+    }
+    
+    // 尝试4：相对于当前工作目录
+    if (!found) {
+      fullPath = path.join(process.cwd(), normalizedPath);
+      console.log('尝试路径4:', fullPath, '存在:', fs.existsSync(fullPath));
+      if (fs.existsSync(fullPath)) {
+        found = true;
+      }
     }
     
     console.log('最终路径:', fullPath, '找到:', found);
@@ -690,23 +703,54 @@ const analyze = (req, res) => {
             fullImportPath = path.join(currentDir, relativePath).replace(/\\/g, '/');
           }
           
-          // 构建完整的tmp路径
+          // 尝试1：相对于临时目录
           const tmpPath = path.join(__dirname, pathConfig.tmpDir, fullImportPath);
           console.log('Checking path (tmp):', tmpPath);
           if (fs.existsSync(tmpPath)) {
             // 规范化路径
-            const normalizedImportPath = fullImportPath.replace(/\\/g, '/').replace(/\/+\//g, '/');
+            const normalizedImportPath = fullImportPath.replace(/\\/g, '/').replace(/\/+/g, '/');
             analyzeFile(normalizedImportPath, depth + 1);
             found = true;
             break;
           }
           
-          // 尝试直接在tmp目录下查找（处理路径中包含tmp的情况）
+          // 尝试2：直接使用完整路径（可能是绝对路径）
+          if (path.isAbsolute(fullImportPath) && fs.existsSync(fullImportPath)) {
+            // 规范化路径
+            const normalizedImportPath = fullImportPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+            analyzeFile(normalizedImportPath, depth + 1);
+            found = true;
+            break;
+          }
+          
+          // 尝试3：相对于项目根目录
+          const projectPath = path.join(__dirname, '..', '..', '..', fullImportPath);
+          console.log('Checking path (project):', projectPath);
+          if (fs.existsSync(projectPath)) {
+            // 规范化路径
+            const normalizedImportPath = fullImportPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+            analyzeFile(normalizedImportPath, depth + 1);
+            found = true;
+            break;
+          }
+          
+          // 尝试4：相对于当前工作目录
+          const cwdPath = path.join(process.cwd(), fullImportPath);
+          console.log('Checking path (cwd):', cwdPath);
+          if (fs.existsSync(cwdPath)) {
+            // 规范化路径
+            const normalizedImportPath = fullImportPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+            analyzeFile(normalizedImportPath, depth + 1);
+            found = true;
+            break;
+          }
+          
+          // 尝试5：直接在tmp目录下查找（处理路径中包含tmp的情况）
           const directTmpPath = path.join(__dirname, pathConfig.tmpDir, possiblePath);
           console.log('Checking direct path (tmp):', directTmpPath);
           if (fs.existsSync(directTmpPath)) {
             // 规范化路径
-            let directPath = possiblePath.replace(/\\/g, '/').replace(/\/+\//g, '/');
+            let directPath = possiblePath.replace(/\\/g, '/').replace(/\/+/g, '/');
             analyzeFile(directPath, depth + 1);
             found = true;
             break;
