@@ -1,8 +1,8 @@
-const CodeParser = require('../lib/parser/codeParser');
+const CodeParser = require('../parser/CodeParser');
 const path = require('path');
 const fs = require('fs');
-const { analysisConfig, functionTypes, importTypes, pathConfig } = require('../config');
-const iconConfig = require('../config/frontendConfig.json');
+const { analysisConfig, functionTypes, importTypes, pathConfig } = require('../config/index');
+const iconConfig = require('../../web/config/frontendConfig.json');
 
 // 基于入口函数构建调用关系图
 function buildCallGraphFromEntry(allFunctions, calls, imports, entryFile, entryFunction) {

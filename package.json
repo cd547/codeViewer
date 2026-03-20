@@ -2,10 +2,10 @@
   "name": "codeviewer",
   "version": "1.0.0",
   "description": "代码调用关系图工具",
-  "main": "src/server/server.js",
+  "main": "server/server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "powershell -Command \"netstat -ano | findstr :3001 | ForEach-Object { $processId = ($_ -split '\\s+')[-1]; if ($processId -match '\\d+') { taskkill /F /PID $processId 2>$null } }; node src/server/server.js\""
+    "start": "powershell -Command \"netstat -ano | findstr :3001 | ForEach-Object { $processId = ($_ -split '\\s+')[-1]; if ($processId -match '\\d+') { taskkill /F /PID $processId 2>$null } }; node server/server.js\""
   },
   "keywords": [
     "code",

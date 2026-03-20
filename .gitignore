@@ -1,5 +1,5 @@
 # 忽略 src/server/tmp 目录下的所有文件
-src/server/tmp/*
+/tmp/*
 
 # 忽略系统文件
 .DS_Store
